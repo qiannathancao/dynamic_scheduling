@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Production Scheduler – Smart Planning Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #4f8ef7;
+      --accent2: #7c5cbf;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ===== Header ===== */
+    header {
+      background: linear-gradient(135deg, #1a1d27 0%, #12152b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo-icon {
+      width: 42px; height: 42px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.3px; }
+    header p  { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+    .badge {
+      margin-left: auto;
+      background: rgba(79,142,247,0.15);
+      border: 1px solid rgba(79,142,247,0.35);
+      color: var(--accent);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    /* ===== Layout ===== */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 77px);
+    }
+
+    /* ===== Left Panel ===== */
+    .left-panel {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* Demand Table */
+    .demand-table-wrap { overflow-x: auto; }
+    table.demand-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    table.demand-table th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    table.demand-table td {
+      padding: 5px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    table.demand-table tr:last-child td { border-bottom: none; }
+    table.demand-table input[type="text"],
+    table.demand-table input[type="number"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 5px 8px;
+      width: 100%;
+      font-size: 0.84rem;
+      transition: border-color 0.2s;
+    }
+    table.demand-table input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .btn-del {
+      background: none;
+      border: none;
+      color: var(--red);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .btn-del:hover { background: rgba(248,113,113,0.15); }
+
+    .btn-add {
+      width: 100%;
+      margin-top: 10px;
+      padding: 9px;
+      background: rgba(79,142,247,0.1);
+      border: 1px dashed rgba(79,142,247,0.4);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-add:hover { background: rgba(79,142,247,0.2); border-style: solid; }
+
+    /* Param Sliders */
+    .param-group { display: flex; flex-direction: column; gap: 16px; }
+    .param-row { display: flex; flex-direction: column; gap: 6px; }
+    .param-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+    .param-label span.name { font-weight: 600; }
+    .param-label span.val {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-size: 0.82rem;
+      color: var(--accent);
+      font-weight: 700;
+      min-width: 42px;
+      text-align: center;
+    }
+    .param-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 5px;
+      border-radius: 3px;
+      background: var(--surface2);
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(79,142,247,0.5);
+    }
+
+    /* Solve Button */
+    .btn-solve {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: 0 4px 18px rgba(79,142,247,0.35);
+    }
+    .btn-solve:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-solve:active { transform: translateY(0); }
+    .btn-solve:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Status */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.83rem;
+      font-weight: 600;
+    }
+    .status-bar.idle    { background: rgba(136,146,164,0.1); color: var(--muted); }
+    .status-bar.solving { background: rgba(251,191,36,0.12); color: var(--yellow); }
+    .status-bar.ok      { background: rgba(52,211,153,0.12); color: var(--green); }
+    .status-bar.error   { background: rgba(248,113,113,0.12); color: var(--red); }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(251,191,36,0.3);
+      border-top-color: var(--yellow);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== Right Panel ===== */
+    .right-panel {
+      padding: 28px 28px 40px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* KPI Cards */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+    .kpi-card.blue::before  { background: var(--accent); }
+    .kpi-card.purple::before { background: var(--accent2); }
+    .kpi-card.green::before { background: var(--green); }
+    .kpi-card.yellow::before { background: var(--yellow); }
+    .kpi-label { font-size: 0.72rem; color: var(--muted); font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; }
+    .kpi-value { font-size: 2rem; font-weight: 800; margin-top: 6px; line-height: 1; }
+    .kpi-sub   { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+    /* Chart Cards */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+    }
+    .chart-card.full { grid-column: 1 / -1; }
+    .chart-card h3 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .chart-card p.sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .chart-wrap { position: relative; }
+
+    /* Gantt */
+    .gantt-wrap {
+      overflow-x: auto;
+    }
+    .gantt-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      min-width: 600px;
+    }
+    .gantt-table th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      text-align: center;
+    }
+    .gantt-table th.row-head { text-align: left; }
+    .gantt-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+      vertical-align: middle;
+    }
+    .gantt-table td.row-head {
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .gantt-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 36px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      transition: all 0.3s;
+    }
+    .gantt-cell.zero {
+      color: var(--border);
+      background: transparent;
+      font-weight: 400;
+    }
+
+    /* Detail Table */
+    .detail-table-wrap { overflow-x: auto; }
+    table.detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+    }
+    table.detail-table th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      text-align: left;
+    }
+    table.detail-table td {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    table.detail-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .day-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--muted);
+      gap: 12px;
+      text-align: center;
+    }
+    .empty-state .icon { font-size: 3rem; opacity: 0.4; }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { animation: fadeInUp 0.4s ease forwards; }
+
+    @keyframes countUp {
+      from { opacity: 0; transform: scale(0.7); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .kpi-value.animate-in { animation: countUp 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .left-panel { border-right: none; border-bottom: 1px solid var(--border); }
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .chart-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo-icon">⚙️</div>
+  <div>
+    <h1>Production Scheduler</h1>
+    <p>AI-Powered Weekly Production Planning &amp; Optimization</p>
+  </div>
+  <div class="badge">CP-SAT Optimizer</div>
+</header>
+
+<div class="main-grid">
+
+  <!-- ===== Left Panel ===== -->
+  <div class="left-panel">
+
+    <!-- Demand Input -->
+    <div>
+      <div class="section-title">📦 Weekly Demand</div>
+      <div class="demand-table-wrap">
+        <table class="demand-table" id="demandTable">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Line</th>
+              <th>Qty</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="demandBody"></tbody>
+        </table>
+      </div>
+      <button class="btn-add" onclick="addRow()">＋ Add Product</button>
+    </div>
+
+    <!-- Solver Parameters -->
+    <div>
+      <div class="section-title">🎛️ Solver Parameters</div>
+      <div class="param-group">
+
+        <div class="param-row">
+          <div class="param-label">
+            <span class="name">Alpha (α) – Model Balance</span>
+            <span class="val" id="alphaVal">1</span>
+          </div>
+          <input type="range" id="alpha" min="0" max="10" step="1" value="1"
+                 oninput="document.getElementById('alphaVal').textContent=this.value" />
+          <div class="param-desc">Weight for balancing production evenly across models per day. Higher = stricter model leveling.</div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-label">
+            <span class="name">Beta (β) – Line Balance</span>
+            <span class="val" id="betaVal">1</span>
+          </div>
+          <input type="range" id="beta" min="0" max="10" step="1" value="1"
+                 oninput="document.getElementById('betaVal').textContent=this.value" />
+          <div class="param-desc">Weight for balancing workload evenly across production lines per day. Higher = stricter line leveling.</div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-label">
+            <span class="name">Spread Threshold</span>
+            <span class="val" id="threshVal">5</span>
+          </div>
+          <input type="range" id="threshold" min="1" max="20" step="1" value="5"
+                 oninput="document.getElementById('threshVal').textContent=this.value" />
+          <div class="param-desc">Models with total qty below this value are forced to spread evenly across all 5 days.</div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-label">
+            <span class="name">Time Limit (sec)</span>
+            <span class="val" id="timeVal">10</span>
+          </div>
+          <input type="range" id="timeLimit" min="2" max="30" step="1" value="10"
+                 oninput="document.getElementById('timeVal').textContent=this.value" />
+          <div class="param-desc">Maximum solver runtime. Longer = potentially better solution quality.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Solve -->
+    <div>
+      <button class="btn-solve" id="solveBtn" onclick="runSolve()">
+        ▶ Run Optimizer
+      </button>
+      <div id="statusBar" class="status-bar idle" style="margin-top:12px;">
+        <span>⏳</span> <span id="statusText">Ready – configure demand and click Run Optimizer</span>
+      </div>
+    </div>
+
+  </div><!-- /left-panel -->
+
+  <!-- ===== Right Panel ===== -->
+  <div class="right-panel" id="rightPanel">
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <div class="icon">📊</div>
+      <p><strong>No schedule yet.</strong><br/>Set your weekly demand on the left and click <em>Run Optimizer</em> to generate an AI-optimized production plan.</p>
+    </div>
+
+    <!-- Results (hidden until solve) -->
+    <div id="results" style="display:none;">
+
+      <!-- KPI Row -->
+      <div class="kpi-row" id="kpiRow">
+        <div class="kpi-card blue">
+          <div class="kpi-label">Total Units</div>
+          <div class="kpi-value" id="kpiTotal">—</div>
+          <div class="kpi-sub">Scheduled this week</div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-label">Models</div>
+          <div class="kpi-value" id="kpiModels">—</div>
+          <div class="kpi-sub">Distinct product models</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">Lines Used</div>
+          <div class="kpi-value" id="kpiLines">—</div>
+          <div class="kpi-sub">Production lines active</div>
+        </div>
+        <div class="kpi-card yellow">
+          <div class="kpi-label">Solver Status</div>
+          <div class="kpi-value" id="kpiStatus" style="font-size:1.1rem;margin-top:8px;">—</div>
+          <div class="kpi-sub" id="kpiObj">Objective value</div>
+        </div>
+      </div>
+
+      <!-- Charts Row 1 -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>📅 Daily Production by Model</h3>
+          <p class="sub">How many units of each model are produced per day</p>
+          <div class="chart-wrap" style="height:260px;">
+            <canvas id="chartModelDay"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>🏭 Daily Load by Production Line</h3>
+          <p class="sub">Workload distribution across lines per day</p>
+          <div class="chart-wrap" style="height:260px;">
+            <canvas id="chartLineDay"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row 2 -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>⚖️ Model Balance Score</h3>
+          <p class="sub">Deviation from ideal daily average per model (lower = more balanced)</p>
+          <div class="chart-wrap" style="height:220px;">
+            <canvas id="chartModelBalance"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>📈 Weekly Volume by Model</h3>
+          <p class="sub">Total units scheduled per model this week</p>
+          <div class="chart-wrap" style="height:220px;">
+            <canvas id="chartModelTotal"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gantt Schedule -->
+      <div class="chart-card full animate-in">
+        <h3>🗓️ Schedule Heatmap – Units per Model × Day</h3>
+        <p class="sub">Color intensity reflects production volume; darker = more units</p>
+        <div class="gantt-wrap" id="ganttWrap"></div>
+      </div>
+
+      <!-- Detail Table -->
+      <div class="chart-card full animate-in">
+        <h3>📋 Full Schedule Detail</h3>
+        <p class="sub">Complete breakdown by model, line, and day</p>
+        <div class="detail-table-wrap" id="detailTableWrap"></div>
+      </div>
+
+    </div><!-- /results -->
+  </div><!-- /right-panel -->
+</div><!-- /main-grid -->
+
+<script>
+// ===== Color Palettes =====
+const PALETTE = [
+  '#4f8ef7','#7c5cbf','#34d399','#fbbf24','#f87171',
+  '#60a5fa','#a78bfa','#6ee7b7','#fcd34d','#fca5a5',
+  '#38bdf8','#c084fc','#4ade80','#fb923c','#f472b6'
+];
+const DAY_COLORS = {
+  Mon:'#4f8ef7', Tue:'#7c5cbf', Wed:'#34d399', Thu:'#fbbf24', Fri:'#f87171'
+};
+const DAYS = ['Mon','Tue','Wed','Thu','Fri'];
+
+// ===== Default Demand Data =====
+const defaultDemand = [
+  { model: 'Model-A', line: 'Line-1', qty: 20 },
+  { model: 'Model-A', line: 'Line-2', qty: 10 },
+  { model: 'Model-B', line: 'Line-1', qty: 15 },
+  { model: 'Model-B', line: 'Line-3', qty: 8  },
+  { model: 'Model-C', line: 'Line-2', qty: 12 },
+  { model: 'Model-C', line: 'Line-3', qty: 6  },
+  { model: 'Model-D', line: 'Line-1', qty: 3  },
+  { model: 'Model-E', line: 'Line-2', qty: 18 },
+];
+
+// ===== Chart instances =====
+let charts = {};
+
+// ===== Init Demand Table =====
+function initTable() {
+  defaultDemand.forEach(r => addRow(r.model, r.line, r.qty));
+}
+
+let rowId = 0;
+function addRow(model='', line='', qty=10) {
+  const id = rowId++;
+  const tbody = document.getElementById('demandBody');
+  const tr = document.createElement('tr');
+  tr.id = `row-${id}`;
+  tr.innerHTML = `
+    <td><input type="text" value="${model}" placeholder="e.g. Model-A" /></td>
+    <td><input type="text" value="${line}"  placeholder="e.g. Line-1" /></td>
+    <td><input type="number" value="${qty}" min="1" max="9999" style="width:70px;" /></td>
+    <td><button class="btn-del" onclick="delRow('row-${id}')">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function delRow(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function getDemandRows() {
+  const rows = [];
+  document.querySelectorAll('#demandBody tr').forEach(tr => {
+    const inputs = tr.querySelectorAll('input');
+    const model = inputs[0].value.trim();
+    const line  = inputs[1].value.trim();
+    const qty   = parseInt(inputs[2].value) || 0;
+    if (model && line && qty > 0) rows.push({ model, line, qty });
+  });
+  return rows;
+}
+
+// ===== Solve =====
+async function runSolve() {
+  const demand = getDemandRows();
+  if (demand.length === 0) {
+    setStatus('error', '✗ Please add at least one demand row.');
+    return;
+  }
+
+  const alpha     = parseInt(document.getElementById('alpha').value);
+  const beta      = parseInt(document.getElementById('beta').value);
+  const threshold = parseInt(document.getElementById('threshold').value);
+  const timeLimit = parseInt(document.getElementById('timeLimit').value);
+
+  setStatus('solving', null);
+  document.getElementById('solveBtn').disabled = true;
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+
+  try {
+    const resp = await fetch('/solve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ demand, alpha, beta, threshold, time_limit: timeLimit })
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error);
+    renderResults(data.result);
+    setStatus('ok', `✓ ${data.result.status} — Objective: ${data.result.objective}`);
+  } catch (e) {
+    setStatus('error', `✗ ${e.message}`);
+    document.getElementById('emptyState').style.display = 'flex';
+  } finally {
+    document.getElementById('solveBtn').disabled = false;
+  }
+}
+
+function setStatus(type, msg) {
+  const bar = document.getElementById('statusBar');
+  const txt = document.getElementById('statusText');
+  bar.className = `status-bar ${type}`;
+  if (type === 'solving') {
+    bar.innerHTML = `<div class="spinner"></div><span>Solving… optimizer is running</span>`;
+  } else {
+    bar.innerHTML = `<span>${msg}</span>`;
+  }
+}
+
+// ===== Render Results =====
+function renderResults(r) {
+  document.getElementById('results').style.display = '';
+
+  // KPIs
+  const totalUnits = Object.values(r.Qm).reduce((a,b)=>a+b, 0);
+  animateKPI('kpiTotal',  totalUnits);
+  animateKPI('kpiModels', r.models.length);
+  animateKPI('kpiLines',  r.lines.length);
+  const kpiSt = document.getElementById('kpiStatus');
+  kpiSt.textContent = r.status;
+  kpiSt.style.color = r.status === 'OPTIMAL' ? 'var(--green)' : 'var(--yellow)';
+  document.getElementById('kpiObj').textContent = `Objective: ${r.objective}`;
+
+  // Charts
+  renderModelDayChart(r);
+  renderLineDayChart(r);
+  renderModelBalanceChart(r);
+  renderModelTotalChart(r);
+  renderGantt(r);
+  renderDetailTable(r);
+
+  // Animate cards
+  document.querySelectorAll('.kpi-card, .chart-card').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(16px)';
+    setTimeout(() => {
+      el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    }, i * 60);
+  });
+}
+
+function animateKPI(id, target) {
+  const el = document.getElementById(id);
+  let start = 0;
+  const step = Math.ceil(target / 30);
+  const timer = setInterval(() => {
+    start = Math.min(start + step, target);
+    el.textContent = start;
+    if (start >= target) clearInterval(timer);
+  }, 30);
+}
+
+// ===== Chart: Model × Day Stacked Bar =====
+function renderModelDayChart(r) {
+  destroyChart('chartModelDay');
+  const ctx = document.getElementById('chartModelDay').getContext('2d');
+
+  // Build datasets: one per model
+  const datasets = r.models.map((m, i) => {
+    const data = DAYS.map(day => {
+      const row = r.model_day.find(x => x.model === m && x.day === day);
+      return row ? row.qty : 0;
+    });
+    return {
+      label: m,
+      data,
+      backgroundColor: PALETTE[i % PALETTE.length] + 'cc',
+      borderColor: PALETTE[i % PALETTE.length],
+      borderWidth: 1,
+      borderRadius: 4,
+    };
+  });
+
+  charts['chartModelDay'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: DAYS, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 900, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { labels: { color: '#8892a4', font: { size: 11 } } },
+        datalabels: { display: false }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: '#8892a4' }, grid: { color: '#2e3350' } },
+        y: { stacked: true, ticks: { color: '#8892a4' }, grid: { color: '#2e3350' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ===== Chart: Line × Day Grouped Bar =====
+function renderLineDayChart(r) {
+  destroyChart('chartLineDay');
+  const ctx = document.getElementById('chartLineDay').getContext('2d');
+
+  const datasets = r.lines.map((s, i) => {
+    const data = DAYS.map(day => {
+      const row = r.line_day.find(x => x.line === s && x.day === day);
+      return row ? row.qty : 0;
+    });
+    return {
+      label: s,
+      data,
+      backgroundColor: PALETTE[(i + 5) % PALETTE.length] + 'cc',
+      borderColor: PALETTE[(i + 5) % PALETTE.length],
+      borderWidth: 1,
+      borderRadius: 4,
+    };
+  });
+
+  charts['chartLineDay'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: DAYS, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 900, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { labels: { color: '#8892a4', font: { size: 11 } } },
+        datalabels: { display: false }
+      },
+      scales: {
+        x: { stacked: false, ticks: { color: '#8892a4' }, grid: { color: '#2e3350' } },
+        y: { stacked: false, ticks: { color: '#8892a4' }, grid: { color: '#2e3350' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ===== Chart: Model Balance (radar-style deviation) =====
+function renderModelBalanceChart(r) {
+  destroyChart('chartModelBalance');
+  const ctx = document.getElementById('chartModelBalance').getContext('2d');
+
+  // Compute max deviation per model
+  const labels = r.models;
+  const data = r.models.map(m => {
+    const ideal = r.Qm[m] / 5;
+    const vals = DAYS.map(day => {
+      const row = r.model_day.find(x => x.model === m && x.day === day);
+      return row ? row.qty : 0;
+    });
+    const maxDev = Math.max(...vals.map(v => Math.abs(v - ideal)));
+    return parseFloat(maxDev.toFixed(2));
+  });
+
+  charts['chartModelBalance'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Max Daily Deviation',
+        data,
+        backgroundColor: data.map(v => v < 1 ? '#34d39988' : v < 3 ? '#fbbf2488' : '#f8717188'),
+        borderColor:      data.map(v => v < 1 ? '#34d399' : v < 3 ? '#fbbf24' : '#f87171'),
+        borderWidth: 1,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 800, easing: 'easeOutBounce' },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          color: '#e2e8f0',
+          font: { weight: 'bold', size: 11 },
+          anchor: 'end', align: 'top',
+          formatter: v => v === 0 ? '✓' : v
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#8892a4' }, grid: { color: '#2e3350' } },
+        y: { ticks: { color: '#8892a4' }, grid: { color: '#2e3350' }, beginAtZero: true }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+}
+
+// ===== Chart: Model Total (doughnut) =====
+function renderModelTotalChart(r) {
+  destroyChart('chartModelTotal');
+  const ctx = document.getElementById('chartModelTotal').getContext('2d');
+
+  charts['chartModelTotal'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: r.models,
+      datasets: [{
+        data: r.models.map(m => r.Qm[m]),
+        backgroundColor: r.models.map((_, i) => PALETTE[i % PALETTE.length] + 'cc'),
+        borderColor:     r.models.map((_, i) => PALETTE[i % PALETTE.length]),
+        borderWidth: 2,
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '60%',
+      animation: { animateRotate: true, duration: 900 },
+      plugins: {
+        legend: { position: 'right', labels: { color: '#8892a4', font: { size: 11 }, padding: 12 } },
+        datalabels: {
+          color: '#fff',
+          font: { weight: 'bold', size: 11 },
+          formatter: (v, ctx) => {
+            const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+            return Math.round(v/total*100) + '%';
+          }
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+}
+
+// ===== Gantt Heatmap =====
+function renderGantt(r) {
+  const wrap = document.getElementById('ganttWrap');
+
+  // Find max qty for color scaling
+  const allQtys = r.model_day.map(x => x.qty);
+  const maxQ = Math.max(...allQtys, 1);
+
+  let html = `<table class="gantt-table">
+    <thead><tr>
+      <th class="row-head">Model</th>
+      ${DAYS.map(d => `<th style="color:${DAY_COLORS[d]}">${d}</th>`).join('')}
+      <th>Total</th>
+    </tr></thead><tbody>`;
+
+  r.models.forEach((m, mi) => {
+    const color = PALETTE[mi % PALETTE.length];
+    html += `<tr>`;
+    html += `<td class="row-head"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:7px;"></span>${m}</td>`;
+    let rowTotal = 0;
+    DAYS.forEach(day => {
+      const row = r.model_day.find(x => x.model === m && x.day === day);
+      const qty = row ? row.qty : 0;
+      rowTotal += qty;
+      if (qty === 0) {
+        html += `<td><span class="gantt-cell zero">—</span></td>`;
+      } else {
+        const intensity = qty / maxQ;
+        const alpha = 0.2 + intensity * 0.7;
+        const bg = hexToRgba(color, alpha);
+        html += `<td><span class="gantt-cell" style="background:${bg};color:#fff;">${qty}</span></td>`;
+      }
+    });
+    html += `<td><strong>${rowTotal}</strong></td></tr>`;
+  });
+
+  // Line totals row
+  html += `<tr style="border-top:2px solid var(--border);">
+    <td class="row-head" style="color:var(--muted);font-size:0.75rem;">DAILY TOTAL</td>`;
+  DAYS.forEach(day => {
+    const dayTotal = r.line_day.filter(x => x.day === day).reduce((a,b)=>a+b.qty,0);
+    html += `<td><strong style="color:${DAY_COLORS[day]}">${dayTotal}</strong></td>`;
+  });
+  const grandTotal = Object.values(r.Qm).reduce((a,b)=>a+b,0);
+  html += `<td><strong style="color:var(--green)">${grandTotal}</strong></td></tr>`;
+
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+
+  // Animate cells
+  setTimeout(() => {
+    wrap.querySelectorAll('.gantt-cell:not(.zero)').forEach((el, i) => {
+      el.style.opacity = '0';
+      el.style.transform = 'scale(0.5)';
+      setTimeout(() => {
+        el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        el.style.opacity = '1';
+        el.style.transform = 'scale(1)';
+      }, i * 20);
+    });
+  }, 100);
+}
+
+// ===== Detail Table =====
+function renderDetailTable(r) {
+  const wrap = document.getElementById('detailTableWrap');
+  if (r.detail.length === 0) {
+    wrap.innerHTML = '<p style="color:var(--muted);padding:20px;">No detail rows.</p>';
+    return;
+  }
+
+  let html = `<table class="detail-table">
+    <thead><tr>
+      <th>Day</th><th>Model</th><th>Line</th><th>Units</th>
+    </tr></thead><tbody>`;
+
+  r.detail.forEach(row => {
+    const dc = DAY_COLORS[row.day] || '#8892a4';
+    html += `<tr>
+      <td><span class="day-badge" style="background:${dc}22;color:${dc}">${row.day}</span></td>
+      <td>${row.model}</td>
+      <td>${row.line}</td>
+      <td><strong>${row.qty}</strong></td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+// ===== Helpers =====
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ===== Boot =====
+Chart.register(ChartDataLabels);
+initTable();
+</script>
+</body>
+</html>
