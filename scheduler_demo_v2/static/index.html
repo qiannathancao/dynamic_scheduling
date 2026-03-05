@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Production Scheduler – AI Optimizer v2</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f172a; --surface:#1e293b; --surface2:#273549; --border:#334155;
+  --text:#f1f5f9; --muted:#94a3b8;
+  --green:#10b981; --blue:#3b82f6; --purple:#8b5cf6;
+  --amber:#f59e0b; --red:#ef4444; --cyan:#06b6d4;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;font-size:14px}
+.app{display:grid;grid-template-rows:auto 1fr;grid-template-columns:390px 1fr;min-height:100vh}
+/* Header */
+.app-header{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.app-header h1{font-size:16px;display:flex;align-items:center;gap:10px}
+.app-header h1 i{color:var(--green)}
+.header-badge{background:rgba(16,185,129,.1);border:1px solid var(--green);color:var(--green);padding:4px 12px;border-radius:4px;font-size:12px;font-weight:700}
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:18px;overflow-y:auto}
+.main{padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:20px}
+h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px}
+h3{font-size:14px;font-weight:600;color:var(--text)}
+.section{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px}
+.section-title{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.section-title i{color:var(--blue)}
+/* Week Selector */
+.week-selector select{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:6px;font-size:13px;cursor:pointer}
+.week-meta{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.meta-badge{background:var(--surface2);border:1px solid var(--border);padding:3px 9px;border-radius:3px;font-size:11px;color:var(--muted)}
+.meta-badge span{color:var(--text);font-weight:700}
+/* Demand Table */
+.demand-table-wrap{max-height:260px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:var(--surface2);padding:7px 9px;text-align:left;color:var(--muted);font-weight:600;position:sticky;top:0;z-index:1}
+tbody tr{border-bottom:1px solid var(--border)}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+td{padding:6px 9px;color:var(--text)}
+.flag-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;margin:1px}
+.flag-rl2512{background:rgba(239,68,68,.15);color:#ef4444}
+.flag-pkrrlsb{background:rgba(245,158,11,.15);color:#f59e0b}
+.flag-pkrml{background:rgba(139,92,246,.15);color:#8b5cf6}
+.flag-dc{background:rgba(6,182,212,.15);color:#06b6d4}
+/* Sliders */
+.slider-group{display:flex;flex-direction:column;gap:12px}
+.slider-row label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px}
+.slider-row label span{color:var(--text);font-weight:700;font-family:monospace}
+input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+.slider-desc{font-size:11px;color:var(--muted);margin-top:1px}
+/* Solve Button */
+.solve-btn{width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px}
+.solve-btn:hover{background:#0ea572}
+.solve-btn:disabled{background:#334155;color:var(--muted);cursor:not-allowed}
+.spinner{display:none;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Status Bar */
+.status-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px}
+.status-dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.status-dot.optimal{background:var(--green);box-shadow:0 0 6px var(--green)}
+.status-dot.feasible{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.status-text{font-size:12px;color:var(--muted)}
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;position:relative;overflow:hidden}
+.kpi-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px}
+.kpi-blue::before{background:var(--blue)}
+.kpi-purple::before{background:var(--purple)}
+.kpi-cyan::before{background:var(--cyan)}
+.kpi-green::before{background:var(--green)}
+.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px}
+.kpi-value{font-size:32px;font-weight:800;font-family:monospace}
+.kpi-blue .kpi-value{color:var(--blue)}
+.kpi-purple .kpi-value{color:var(--purple)}
+.kpi-cyan .kpi-value{color:var(--cyan)}
+.kpi-green .kpi-value{color:var(--green)}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
+/* Charts */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px}
+.chart-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.chart-title i{color:var(--blue)}
+.chart-wrap{height:240px;position:relative}
+/* Compliance */
+.compliance-grid{display:flex;flex-direction:column;gap:8px}
+.compliance-row{display:flex;align-items:flex-start;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px}
+.comp-icon{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:2px}
+.comp-met{background:rgba(16,185,129,.15);color:var(--green)}
+.comp-miss{background:rgba(239,68,68,.15);color:var(--red)}
+.comp-info{flex:1}
+.comp-constraint{font-size:12px;font-weight:600;color:var(--text)}
+.comp-detail{font-size:11px;color:var(--muted);margin-top:2px}
+.comp-days{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.day-chip{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;background:var(--surface);border:1px solid var(--border);color:var(--muted)}
+.day-chip.pref{background:rgba(16,185,129,.12);border-color:var(--green);color:var(--green)}
+/* Heatmap */
+.heatmap-table{width:100%;border-collapse:separate;border-spacing:3px;font-size:12px;font-family:monospace}
+.heatmap-table th{padding:7px 10px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.6px;text-align:center}
+.heatmap-table th:first-child{text-align:left}
+.heatmap-table td{text-align:center;padding:8px;border-radius:3px;font-weight:600;min-width:52px}
+.heatmap-table td:first-child{text-align:left;color:var(--text);background:transparent;font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.heatmap-table td.total-col{background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+.hm-0{background:rgba(30,41,59,.4);color:var(--muted)}
+.hm-1{background:rgba(59,130,246,.15);color:#93c5fd}
+.hm-2{background:rgba(59,130,246,.30);color:#60a5fa}
+.hm-3{background:rgba(59,130,246,.45);color:#3b82f6}
+.hm-4{background:rgba(59,130,246,.62);color:#fff}
+.hm-5{background:rgba(59,130,246,.80);color:#fff}
+.hm-hi{background:rgba(59,130,246,.95);color:#fff}
+/* Detail Table */
+.detail-table-wrap{max-height:300px;overflow-y:auto}
+.detail-table{width:100%;border-collapse:collapse;font-size:12px}
+.detail-table th{background:var(--surface2);padding:8px 11px;text-align:left;color:var(--muted);font-weight:600;position:sticky;top:0;z-index:1}
+.detail-table td{padding:7px 11px;border-bottom:1px solid var(--border)}
+.detail-table tr:hover td{background:rgba(255,255,255,.02)}
+.day-mon{color:#60a5fa}.day-tue{color:#a78bfa}.day-wed{color:#34d399}.day-thu{color:#fb923c}.day-fri{color:#f472b6}
+/* Placeholder */
+.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;color:var(--muted);gap:10px}
+.placeholder i{font-size:32px;opacity:.3}
+.placeholder p{font-size:13px}
+/* Constraint Legend */
+.cl-legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.cl-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- Header -->
+<header class="app-header">
+  <h1><i class="fas fa-industry"></i> AI Production Scheduler</h1>
+  <div class="header-badge"><i class="fas fa-microchip"></i>&nbsp; CP-SAT Optimizer v2</div>
+</header>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+
+  <!-- Week Selector -->
+  <div>
+    <h2><i class="fas fa-calendar-week" style="color:var(--blue);margin-right:5px"></i>Production Week</h2>
+    <div class="week-selector">
+      <select id="weekSelect" onchange="onWeekChange()">
+        <option value="">Loading weeks…</option>
+      </select>
+    </div>
+    <div class="week-meta" id="weekMeta"></div>
+  </div>
+
+  <!-- Demand Orders -->
+  <div>
+    <h2><i class="fas fa-list" style="color:var(--blue);margin-right:5px"></i>Demand Orders
+      <span id="demandCount" style="color:var(--text);font-size:11px;margin-left:4px"></span>
+    </h2>
+    <div class="cl-legend">
+      <div class="cl-item"><span class="flag-badge flag-rl2512">2512</span>Rear Loader 2512</div>
+      <div class="cl-item"><span class="flag-badge flag-pkrrlsb">RLSB</span>Rear Loader SB</div>
+      <div class="cl-item"><span class="flag-badge flag-pkrml">ML</span>Manual Side Loader</div>
+      <div class="cl-item"><span class="flag-badge flag-dc">DC</span>DC Refuse Stock</div>
+    </div>
+    <div class="demand-table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>Line</th><th>Qty</th><th>Flags</th></tr></thead>
+        <tbody id="demandBody">
+          <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">Select a week to load orders</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Solver Parameters -->
+  <div>
+    <h2><i class="fas fa-sliders-h" style="color:var(--blue);margin-right:5px"></i>Solver Parameters</h2>
+    <div class="slider-group">
+      <div class="slider-row">
+        <label>Alpha – Model Balance <span id="alphaVal">1</span></label>
+        <input type="range" id="alpha" min="1" max="10" value="1" step="1"
+               oninput="document.getElementById('alphaVal').textContent=this.value">
+        <div class="slider-desc">Higher = stricter daily leveling per model</div>
+      </div>
+      <div class="slider-row">
+        <label>Beta – Line Balance <span id="betaVal">1</span></label>
+        <input type="range" id="beta" min="1" max="10" value="1" step="1"
+               oninput="document.getElementById('betaVal').textContent=this.value">
+        <div class="slider-desc">Higher = stricter daily leveling per production line</div>
+      </div>
+      <div class="slider-row">
+        <label>Spread Threshold <span id="threshVal">5</span></label>
+        <input type="range" id="threshold" min="1" max="20" value="5" step="1"
+               oninput="document.getElementById('threshVal').textContent=this.value">
+        <div class="slider-desc">Models below this qty must appear every day</div>
+      </div>
+      <div class="slider-row">
+        <label>Constraint Penalty <span id="penaltyVal">50</span></label>
+        <input type="range" id="penalty" min="10" max="200" value="50" step="10"
+               oninput="document.getElementById('penaltyVal').textContent=this.value">
+        <div class="slider-desc">Soft constraint violation cost (Tue/Thu, Fri preferences)</div>
+      </div>
+      <div class="slider-row">
+        <label>Time Limit (sec) <span id="timeVal">10</span></label>
+        <input type="range" id="time_limit" min="5" max="60" value="10" step="5"
+               oninput="document.getElementById('timeVal').textContent=this.value">
+        <div class="slider-desc">Max solver runtime</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Solve Button -->
+  <button class="solve-btn" id="solveBtn" onclick="runSolver()">
+    <i class="fas fa-play-circle"></i>
+    <span id="solveBtnText">Run Optimizer</span>
+    <div class="spinner" id="spinner"></div>
+  </button>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <div class="status-text" id="statusText">Ready — select a week and run</div>
+  </div>
+
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Total Units</div>
+      <div class="kpi-value" id="kpiUnits">—</div>
+      <div class="kpi-sub">Scheduled this week</div>
+    </div>
+    <div class="kpi-card kpi-purple">
+      <div class="kpi-label">Models</div>
+      <div class="kpi-value" id="kpiModels">—</div>
+      <div class="kpi-sub">Distinct product models</div>
+    </div>
+    <div class="kpi-card kpi-cyan">
+      <div class="kpi-label">Lines Used</div>
+      <div class="kpi-value" id="kpiLines">—</div>
+      <div class="kpi-sub">Production lines active</div>
+    </div>
+    <div class="kpi-card kpi-green">
+      <div class="kpi-label">Solver Status</div>
+      <div class="kpi-value" id="kpiStatus" style="font-size:20px;margin-top:4px">—</div>
+      <div class="kpi-sub" id="kpiObj">Objective score: —</div>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="charts-row">
+    <div class="chart-box">
+      <div class="chart-title"><i class="fas fa-chart-bar"></i> Daily Production by Model</div>
+      <div class="chart-wrap"><canvas id="chartModelDay"></canvas></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title"><i class="fas fa-chart-line"></i> Daily Workload by Line</div>
+      <div class="chart-wrap"><canvas id="chartLineDay"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Constraint Compliance -->
+  <div class="section">
+    <div class="section-title">
+      <i class="fas fa-shield-alt"></i>
+      <h3>Special Constraint Compliance</h3>
+    </div>
+    <div class="compliance-grid" id="complianceGrid">
+      <div class="placeholder"><i class="fas fa-shield-alt"></i><p>Compliance report will appear after solving</p></div>
+    </div>
+  </div>
+
+  <!-- Heatmap -->
+  <div class="section">
+    <div class="section-title">
+      <i class="fas fa-th"></i>
+      <h3>Schedule Heatmap — Model × Day</h3>
+    </div>
+    <div id="heatmapContainer">
+      <div class="placeholder"><i class="fas fa-th"></i><p>Heatmap will appear after solving</p></div>
+    </div>
+  </div>
+
+  <!-- Detail Table -->
+  <div class="section">
+    <div class="section-title">
+      <i class="fas fa-table"></i>
+      <h3>Full Schedule Detail</h3>
+    </div>
+    <div class="detail-table-wrap">
+      <table class="detail-table">
+        <thead><tr><th>Day</th><th>Model</th><th>Line</th><th>Units</th><th>Flags</th></tr></thead>
+        <tbody id="detailBody">
+          <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">Run the optimizer to see the schedule</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+const DAYS = ["Mon","Tue","Wed","Thu","Fri"];
+const MODEL_COLORS = [
+  "#3b82f6","#8b5cf6","#10b981","#f59e0b","#ef4444",
+  "#06b6d4","#f97316","#a3e635","#e879f9","#fb7185",
+  "#34d399","#fbbf24","#60a5fa","#c084fc","#4ade80","#38bdf8"
+];
+const LINE_COLORS = {"1":"#3b82f6","2":"#8b5cf6","3":"#06b6d4"};
+
+let demandRows = [];
+let chartMD = null, chartLD = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.onload = async () => { await loadWeeks(); };
+
+async function loadWeeks() {
+  const res  = await fetch("/weeks");
+  const data = await res.json();
+  if (!data.ok) { alert("Failed to load weeks: " + data.error); return; }
+  const sel = document.getElementById("weekSelect");
+  sel.innerHTML = '<option value="">— Select Production Week —</option>';
+  data.weeks.forEach(w => {
+    const opt = document.createElement("option");
+    opt.value = w.key;
+    opt.textContent = `${w.label}  (${w.count} units)`;
+    sel.appendChild(opt);
+  });
+}
+
+async function onWeekChange() {
+  const key = document.getElementById("weekSelect").value;
+  if (!key) { demandRows = []; renderDemandTable([]); return; }
+  const res  = await fetch(`/week_data/${key}`);
+  const data = await res.json();
+  if (!data.ok) { alert("Failed to load week data: " + data.error); return; }
+  demandRows = data.rows;
+  renderDemandTable(demandRows);
+  updateWeekMeta(demandRows);
+}
+
+function updateWeekMeta(rows) {
+  const models  = new Set(rows.map(r => r.model)).size;
+  const lines   = new Set(rows.map(r => r.line)).size;
+  const rl2512  = rows.filter(r => r.rl2512).length;
+  const pkrrlsb = rows.filter(r => r.pkrrlsb).length;
+  const pkrml   = rows.filter(r => r.pkrml).length;
+  const dc      = rows.filter(r => r.dc_refuse).length;
+  document.getElementById("weekMeta").innerHTML = `
+    <div class="meta-badge">Units: <span>${rows.length}</span></div>
+    <div class="meta-badge">Models: <span>${models}</span></div>
+    <div class="meta-badge">Lines: <span>${lines}</span></div>
+    ${rl2512  ? `<div class="meta-badge" style="border-color:#ef4444">2512: <span style="color:#ef4444">${rl2512}</span></div>` : ""}
+    ${pkrrlsb ? `<div class="meta-badge" style="border-color:#f59e0b">RLSB: <span style="color:#f59e0b">${pkrrlsb}</span></div>` : ""}
+    ${pkrml   ? `<div class="meta-badge" style="border-color:#8b5cf6">ML: <span style="color:#8b5cf6">${pkrml}</span></div>` : ""}
+    ${dc      ? `<div class="meta-badge" style="border-color:#06b6d4">DC: <span style="color:#06b6d4">${dc}</span></div>` : ""}
+  `;
+  document.getElementById("demandCount").textContent = `(${rows.length} orders)`;
+}
+
+function renderDemandTable(rows) {
+  const agg = {};
+  rows.forEach(r => {
+    const k = `${r.model}||${r.line}`;
+    if (!agg[k]) agg[k] = {model:r.model, line:r.line, qty:0, rl2512:0, pkrrlsb:0, pkrml:0, dc_refuse:0};
+    agg[k].qty++;
+    for (const f of ["rl2512","pkrrlsb","pkrml","dc_refuse"])
+      agg[k][f] = Math.max(agg[k][f], r[f]||0);
+  });
+  const tbody = document.getElementById("demandBody");
+  const sorted = Object.values(agg).sort((a,b) => a.model.localeCompare(b.model));
+  tbody.innerHTML = sorted.map(r => {
+    const flags = [
+      r.rl2512    ? `<span class="flag-badge flag-rl2512">2512</span>` : "",
+      r.pkrrlsb   ? `<span class="flag-badge flag-pkrrlsb">RLSB</span>` : "",
+      r.pkrml     ? `<span class="flag-badge flag-pkrml">ML</span>` : "",
+      r.dc_refuse ? `<span class="flag-badge flag-dc">DC</span>` : "",
+    ].join("");
+    const shortModel = r.model.length > 16 ? r.model.substring(0,16)+"…" : r.model;
+    return `<tr>
+      <td title="${r.model}">${shortModel}</td>
+      <td>L${r.line}</td>
+      <td><strong>${r.qty}</strong></td>
+      <td>${flags || '<span style="color:var(--muted)">—</span>'}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── Solver ────────────────────────────────────────────────────────────────────
+async function runSolver() {
+  if (!demandRows.length) { alert("Please select a production week first."); return; }
+  const btn     = document.getElementById("solveBtn");
+  const spinner = document.getElementById("spinner");
+  btn.disabled  = true;
+  spinner.style.display = "block";
+  document.getElementById("solveBtnText").textContent = "Solving…";
+  setStatus("idle", "Optimizer running…");
+
+  const payload = {
+    demand:         demandRows,
+    alpha:          parseFloat(document.getElementById("alpha").value),
+    beta:           parseFloat(document.getElementById("beta").value),
+    threshold:      parseInt(document.getElementById("threshold").value),
+    time_limit:     parseInt(document.getElementById("time_limit").value),
+    penalty_weight: parseInt(document.getElementById("penalty").value),
+  };
+
+  try {
+    const res  = await fetch("/solve", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    renderResults(data.result);
+    const s = data.result.status;
+    setStatus(s.toLowerCase(), `${s} — Objective: ${Math.round(data.result.objective)}`);
+  } catch(e) {
+    alert("Solver error: " + e.message);
+    setStatus("idle", "Error — check console");
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = "none";
+    document.getElementById("solveBtnText").textContent = "Run Optimizer";
+  }
+}
+
+function setStatus(type, msg) {
+  const dot = document.getElementById("statusDot");
+  dot.className = "status-dot";
+  if (type === "optimal")  dot.classList.add("optimal");
+  else if (type === "feasible") dot.classList.add("feasible");
+  document.getElementById("statusText").textContent = msg;
+}
+
+// ── Render Results ────────────────────────────────────────────────────────────
+function renderResults(r) {
+  animateKPI("kpiUnits",  r.total_units);
+  animateKPI("kpiModels", r.models.length);
+  animateKPI("kpiLines",  r.lines.length);
+  const ks = document.getElementById("kpiStatus");
+  ks.textContent = r.status;
+  ks.style.color = r.status === "OPTIMAL" ? "var(--green)" : "var(--amber)";
+  document.getElementById("kpiObj").textContent = `Objective score: ${Math.round(r.objective)}`;
+  renderModelDayChart(r);
+  renderLineDayChart(r);
+  renderHeatmap(r);
+  renderDetailTable(r);
+  renderCompliance(r.compliance || []);
+}
+
+function animateKPI(id, target) {
+  const el = document.getElementById(id);
+  let cur = 0;
+  const step = Math.max(1, Math.ceil(target / 30));
+  const t = setInterval(() => {
+    cur = Math.min(cur + step, target);
+    el.textContent = cur;
+    if (cur >= target) clearInterval(t);
+  }, 30);
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function renderModelDayChart(r) {
+  const ctx = document.getElementById("chartModelDay").getContext("2d");
+  if (chartMD) chartMD.destroy();
+  const datasets = r.models.map((m, i) => ({
+    label: m.length > 12 ? m.substring(0,12)+"…" : m,
+    data: DAYS.map(day => { const f = r.model_day.find(x => x.model===m && x.day===day); return f ? f.qty : 0; }),
+    backgroundColor: MODEL_COLORS[i % MODEL_COLORS.length],
+  }));
+  chartMD = new Chart(ctx, {
+    type: "bar",
+    data: { labels: DAYS, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend: { position:"bottom", labels:{ color:"#94a3b8", font:{size:10}, boxWidth:10, padding:6 } },
+        tooltip: { mode:"index", intersect:false }
+      },
+      scales: {
+        x: { stacked:true, grid:{color:"rgba(148,163,184,.08)"}, ticks:{color:"#94a3b8"} },
+        y: { stacked:true, grid:{color:"rgba(148,163,184,.08)"}, ticks:{color:"#94a3b8"}, beginAtZero:true }
+      }
+    }
+  });
+}
+
+function renderLineDayChart(r) {
+  const ctx = document.getElementById("chartLineDay").getContext("2d");
+  if (chartLD) chartLD.destroy();
+  const datasets = r.lines.map(s => ({
+    label: `Line ${s}`,
+    data: DAYS.map(day => { const f = r.line_day.find(x => x.line===s && x.day===day); return f ? f.qty : 0; }),
+    backgroundColor: LINE_COLORS[s] || "#94a3b8",
+    borderColor:     LINE_COLORS[s] || "#94a3b8",
+    borderWidth: 1,
+  }));
+  chartLD = new Chart(ctx, {
+    type: "bar",
+    data: { labels: DAYS, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend: { position:"top", align:"end", labels:{ color:"#94a3b8", font:{size:11}, boxWidth:10, padding:8 } },
+        tooltip: { mode:"index", intersect:false }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{color:"#94a3b8"} },
+        y: { grid:{color:"rgba(148,163,184,.08)"}, ticks:{color:"#94a3b8"}, beginAtZero:true }
+      }
+    }
+  });
+}
+
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+function renderHeatmap(r) {
+  const matrix = {};
+  r.model_day.forEach(x => {
+    if (!matrix[x.model]) matrix[x.model] = {};
+    matrix[x.model][x.day] = x.qty;
+  });
+  const maxVal = Math.max(1, ...Object.values(matrix).flatMap(d => Object.values(d)));
+  function hmClass(v) {
+    if (!v) return "hm-0";
+    const p = v / maxVal;
+    if (p < .15) return "hm-1";
+    if (p < .30) return "hm-2";
+    if (p < .50) return "hm-3";
+    if (p < .70) return "hm-4";
+    if (p < .90) return "hm-5";
+    return "hm-hi";
+  }
+  let html = `<div style="overflow-x:auto"><table class="heatmap-table"><thead><tr>
+    <th>Model</th>${DAYS.map(d=>`<th>${d}</th>`).join("")}<th>Total</th>
+  </tr></thead><tbody>`;
+  r.models.forEach(m => {
+    const total = DAYS.reduce((s,d) => s + (matrix[m]?.[d]||0), 0);
+    html += `<tr><td title="${m}">${m.length>18?m.substring(0,18)+"…":m}</td>`;
+    DAYS.forEach(d => {
+      const v = matrix[m]?.[d]||0;
+      html += `<td class="${hmClass(v)}">${v||"—"}</td>`;
+    });
+    html += `<td class="total-col">${total}</td></tr>`;
+  });
+  // Totals row
+  html += `<tr style="border-top:2px solid var(--border)"><td><strong>Total</strong></td>`;
+  DAYS.forEach(d => {
+    const t = r.models.reduce((s,m) => s+(matrix[m]?.[d]||0), 0);
+    html += `<td class="total-col"><strong>${t}</strong></td>`;
+  });
+  html += `<td class="total-col" style="color:var(--green)"><strong>${r.total_units}</strong></td></tr>`;
+  html += `</tbody></table></div>`;
+  document.getElementById("heatmapContainer").innerHTML = html;
+}
+
+// ── Detail Table ──────────────────────────────────────────────────────────────
+function renderDetailTable(r) {
+  const dc = {Mon:"day-mon",Tue:"day-tue",Wed:"day-wed",Thu:"day-thu",Fri:"day-fri"};
+  document.getElementById("detailBody").innerHTML = r.detail.map(row => {
+    const flags = [
+      row.rl2512    ? `<span class="flag-badge flag-rl2512">2512</span>` : "",
+      row.pkrrlsb   ? `<span class="flag-badge flag-pkrrlsb">RLSB</span>` : "",
+      row.pkrml     ? `<span class="flag-badge flag-pkrml">ML</span>` : "",
+      row.dc_refuse ? `<span class="flag-badge flag-dc">DC</span>` : "",
+    ].join("");
+    const sm = row.model.length>22 ? row.model.substring(0,22)+"…" : row.model;
+    return `<tr>
+      <td class="${dc[row.day]||""}">${row.day}</td>
+      <td title="${row.model}">${sm}</td>
+      <td>Line ${row.line}</td>
+      <td><strong>${row.qty}</strong></td>
+      <td>${flags||"—"}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── Compliance Panel ──────────────────────────────────────────────────────────
+function renderCompliance(compliance) {
+  const grid = document.getElementById("complianceGrid");
+  if (!compliance.length) {
+    grid.innerHTML = `<div class="placeholder"><i class="fas fa-check-circle" style="color:var(--green);opacity:.8"></i><p>No special constraints flagged in this week</p></div>`;
+    return;
+  }
+  const PREF_MAP = {
+    "Rear Loader 2512 – Max 1/Day + Spaced": [],
+    "Rear Loader PKRRLSB – Prefer Tue/Thu": ["Tue","Thu"],
+    "Manual Side Loader PKRML – Prefer Tue/Thu": ["Tue","Thu"],
+    "DC Refuse Stock – Prefer Friday": ["Fri"],
+  };
+  grid.innerHTML = compliance.map(c => {
+    const icon = c.met
+      ? `<div class="comp-icon comp-met"><i class="fas fa-check"></i></div>`
+      : `<div class="comp-icon comp-miss"><i class="fas fa-times"></i></div>`;
+    const prefDays = PREF_MAP[c.constraint] || [];
+    const chips = (c.scheduled_days||[]).map(d =>
+      `<span class="day-chip ${prefDays.includes(d)?"pref":""}">${d}</span>`
+    ).join("");
+    return `<div class="compliance-row">
+      ${icon}
+      <div class="comp-info">
+        <div class="comp-constraint">${c.constraint}</div>
+        <div class="comp-detail">${c.unit} &middot; ${c.qty} unit(s) &middot; Preferred: <strong>${c.preferred}</strong></div>
+        <div class="comp-days">${chips}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+</script>
+</body>
+</html>
