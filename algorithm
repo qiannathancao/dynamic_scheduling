@@ -1,0 +1,198 @@
+Below is the same content, rewritten into a **clean, well-laid-out write-up** you can paste into a doc, Confluence, or a slide speaker-notes page. I kept both audiences (technical + non-technical), improved headings, spacing, and flow, and tightened wording where it was repetitive.
+
+(Refuse dynamic scheduling context reference: MNDC Dynamic Scheduling report )
+
+---
+
+# Refuse Truck Dynamic Scheduling (1-Week) — Optimizer Write-Up
+
+## Purpose (What this scheduler is solving)
+
+For a given production week (Mon–Fri), we need to allocate all required **refuse truck builds** across:
+
+* **Days** (Mon–Fri),
+* **Production lines (Line Sorts)**,
+* **Models / configurations**,
+
+…while keeping the plan **smooth and balanced**, honoring a few **special rules**, and ensuring **all demand is fulfilled**.
+
+This aligns with MNDC’s need for a scheduling engine that can level load, respect constraints, and update schedules as conditions change. 
+
+---
+
+## Part A — Technical Explanation (Data Science / Engineering)
+
+### 1) Core function and role
+
+The optimizer is `solve_schedule(...)` in `scheduler_demo_v3/app.py`. It builds an **integer optimization model** (CP-SAT style) that:
+
+* assigns each required unit to a day and line,
+* respects hard constraints,
+* minimizes imbalance and “preference violations”.
+
+---
+
+### 2) Sets and indices
+
+* **Days:**
+  [
+  D={0,1,2,3,4}\quad (\text{Mon–Fri}),\quad |D|=N_D=5
+  ]
+* **Models:** (M) (from demand rows)
+* **Lines:** (L) (from demand rows)
+
+---
+
+### 3) Inputs (from demand rows)
+
+* **Demand by model-line:**
+  [
+  q_{m,\ell}\in\mathbb{Z}_{\ge 0}
+  ]
+* **Aggregates:**
+  [
+  Q_m=\sum_{\ell\in L} q_{m,\ell},\qquad Q_\ell=\sum_{m\in M} q_{m,\ell}
+  ]
+* **Flags for special handling** (binary indicators per ((m,\ell))):
+  [
+  f^{2512}*{m,\ell},\ f^{PKRRLSB}*{m,\ell},\ f^{PKRML}*{m,\ell},\ f^{DC}*{m,\ell}\in{0,1}
+  ]
+* **Hyperparameters (knobs):**
+
+  * (\alpha\ge 0): weight on **model** balance
+  * (\beta\ge 0): weight on **line** balance
+  * (T): `small_model_threshold`
+  * (W): `penalty_weight`
+
+---
+
+### 4) Decision variables
+
+* **Production assignment (integer):**
+  [
+  x_{m,\ell,d}\in{0,1,\dots,q_{m,\ell}}\quad \forall (m,\ell)\text{ where }q_{m,\ell}>0,\ \forall d\in D
+  ]
+* **Derived daily totals:**
+  [
+  y_{m,d}=\sum_{\ell\in L} x_{m,\ell,d},\qquad z_{\ell,d}=\sum_{m\in M} x_{m,\ell,d}
+  ]
+* **Absolute deviation linearization variables** (for balancing):
+  [
+  u_{m,d}\ge \left|N_D\cdot y_{m,d}-Q_m\right|,\qquad
+  v_{\ell,d}\ge \left|N_D\cdot z_{\ell,d}-Q_\ell\right|
+  ]
+  (Implemented with two inequalities each.)
+
+---
+
+### 5) Hard constraints (must always hold)
+
+**(1) Full demand coverage (exact fulfillment)**
+[
+\sum_{d\in D} x_{m,\ell,d} = q_{m,\ell}\quad \forall (m,\ell)
+]
+
+**(2) Small-model spread** (for models with (Q_m<T))
+[
+\left\lfloor\frac{Q_m}{N_D}\right\rfloor \le y_{m,d} \le \left\lceil\frac{Q_m}{N_D}\right\rceil \quad \forall d\in D
+]
+This forces low-volume models to distribute across days as evenly as possible.
+
+**(3) Rear Loader 2512 daily cap** (global cap across flagged work)
+[
+\sum_{(m,\ell): f^{2512}*{m,\ell}=1} x*{m,\ell,d}\le 1\quad \forall d\in D
+]
+
+---
+
+### 6) Soft constraints (preferences with penalties)
+
+Certain work is *preferred* on certain days. The model adds a penalty if **none** of a flagged ((m,\ell)) is placed on its preferred days.
+
+* Preferred-day sets:
+
+  * **PKRML** and **PKRRLSB:** Tue/Thu
+  * **DC Refuse:** Fri
+
+For a flagged pair ((m,\ell)) with preferred-day set (P\subseteq D):
+[
+p_{m,\ell}=
+\begin{cases}
+0 & \text{if }\exists d\in P\text{ such that }x_{m,\ell,d}\ge 1\
+1 & \text{otherwise}
+\end{cases}
+]
+This contributes (W\cdot p_{m,\ell}) to the objective.
+
+---
+
+### 7) Objective (what “good” means)
+
+Minimize imbalance + preference penalties:
+[
+\min\
+\alpha\sum_{m\in M}\sum_{d\in D}u_{m,d}
+;+;
+\beta\sum_{\ell\in L}\sum_{d\in D}v_{\ell,d}
+;+;
+W\sum_{(m,\ell)\in \mathcal{P}} p_{m,\ell}
+]
+where (\mathcal{P}) is the set of pairs eligible for preference penalties.
+
+**Interpretation**
+
+* (\alpha): smooth each **model** across Mon–Fri
+* (\beta): smooth each **line** across Mon–Fri
+* (W): how strongly we try to hit “preferred days”
+* CP-SAT searches for a feasible schedule, then improves it within `time_limit_sec`.
+
+---
+
+## Part B — Executive / Non-Technical Explanation (Plant + Business)
+
+### Plain-language analogy
+
+Think of the week as **five buckets (Mon–Fri)** and each production line as a **lane**.
+Each truck order is a **tagged package** labeled with:
+
+* a **model** (what we build),
+* a **line sort** (where it can be built),
+* sometimes a **special sticker** that adds rules.
+
+**Special stickers:**
+
+* **Rear Loader 2512:** only **1 per day** (no matter which line).
+* **PKRML / PKRRLSB:** try to schedule at least one unit on **Tue/Thu**.
+* **DC Refuse Stock:** try to schedule at least one unit on **Friday**.
+
+---
+
+### What the algorithm does end-to-end
+
+1. Loads the weekly demand (the list of trucks that must be produced).
+2. When you hit **Solve**, it assigns every truck into a **day (Mon–Fri)** and **line sort**.
+3. It produces a plan that:
+
+   * **Builds everything required** (no dropped demand),
+   * Keeps daily work **balanced** (avoids spikes by model or by line),
+   * Honors special rules (e.g., **only 1 RL 2512 per day**),
+   * Tries to meet preferences (Tue/Thu, Fri), but can break them if needed (and logs a penalty).
+4. Outputs:
+
+   * Day-by-day schedule (“what to build on which line, on which day”)
+   * Rollups by model/day and line/day
+   * A compliance-style report showing whether special rules were met
+
+---
+
+## Notes (How this fits MNDC dynamic scheduling goals)
+
+This approach supports the broader MNDC need for **constraint-based sequencing** and **load leveling**, which is a key theme in the MNDC dynamic scheduling workstream (capacity constraints, variability, and smooth flow through paint/assembly). 
+
+---
+
+If you tell me where you want to use it (Word doc vs slide vs Confluence), I can reformat this into:
+
+* a **one-page “model card”**,
+* a **two-column executive + technical layout**,
+* or a **slide-ready** version with short bullets and callouts.
